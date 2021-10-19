@@ -48,7 +48,7 @@ class PluginTasklistsTaskType extends CommonTreeDropdown {
       return _n('Context', 'Contexts', $nb, 'tasklists');
    }
 
-   static $rightname = 'plugin_tasklists';
+   static $rightname = 'plugin_tasklists_config';
 
    /**
     * @param array $options
@@ -115,7 +115,7 @@ class PluginTasklistsTaskType extends CommonTreeDropdown {
 
          if ($result = $DB->query($query)) {
             if ($DB->numrows($result)) {
-               $data                                   = $DB->fetch_assoc($result);
+               $data                                   = $DB->fetchAssoc($result);
                $data                                   = Toolbox::addslashes_deep($data);
                $input['name']                          = $data['name'];
                $input['entities_id']                   = $entity;
@@ -220,7 +220,7 @@ class PluginTasklistsTaskType extends CommonTreeDropdown {
       foreach ($states as $state) {
 
          $tasks = [];
-         $datas = $task->find(["plugin_tasklists_tasktypes_id" => $ID, "plugin_tasklists_taskstates_id" => $state["id"], 'is_deleted' => 0, 'is_template' => 0], ['priority DESC']);
+         $datas = $task->find(["plugin_tasklists_tasktypes_id" => $ID, "plugin_tasklists_taskstates_id" => $state["id"], 'is_deleted' => 0, 'is_template' => 0], ['priority DESC,name']);
 
          foreach ($datas as $data) {
             $array = isset($_SESSION["archive"][Session::getLoginUserID()]) ? json_decode($_SESSION["archive"][Session::getLoginUserID()]) : [0];
@@ -235,7 +235,7 @@ class PluginTasklistsTaskType extends CommonTreeDropdown {
             $link = "";
             if ($user->getFromDB($data['users_id'])) {
                $link = "<div class='kanban_user_picture_border_verysmall'>";
-               $link .= "<a target='_blank' href='" . Toolbox::getItemTypeFormURL('User') . "?id=" . $data['users_id'] . "'><img title=\"" . $dbu->getUserName($data['users_id']) . "\" class='kanban_user_picture_verysmall' alt=\"" . $dbu->getUserName($data['users_id']) . "\" src='" .
+               $link .= "<a target='_blank' href='" . Toolbox::getItemTypeFormURL('User') . "?id=" . $data['users_id'] . "'><img title=\"" . $dbu->getUserName($data['users_id']) . "\" class='kanban_user_picture_verysmall'  src='" .
                         User::getThumbnailURLForPicture($user->fields['picture']) . "'></a>";
                $link .= "</div>";
             }
@@ -360,6 +360,33 @@ class PluginTasklistsTaskType extends CommonTreeDropdown {
 
       return $users;
    }
+
+   /**
+    * Have I the global right to "create" the Object
+    * May be overloaded if needed (ex KnowbaseItem)
+    *
+    * @return boolean
+    **/
+   static function canCreate() {
+      if (static::$rightname) {
+         return Session::haveRight(static::$rightname, 1);
+      }
+      return false;
+   }
+   static function canUpdate() {
+      if (static::$rightname) {
+         return Session::haveRight(static::$rightname, 1);
+      }
+      return false;
+   }
+
+   static function canDelete() {
+      if (static::$rightname) {
+         return Session::haveRight(static::$rightname, 1);
+      }
+      return false;
+   }
+
 
 
 }

@@ -35,19 +35,20 @@ Html::header_nocache();
 header("Content-Type: text/html; charset=UTF-8");
 
 //Html::requireJs('tinymce');
-echo "<script type='text/javascript'  src='../../../lib/tiny_mce/lib/tinymce.min.js'></script>";
+echo "<script type='text/javascript'  src='../../../public/lib/tinymce.js'></script>";
 
 if (isset($_GET['id'])) {
    $options = [
       'from_edit_ajax' => true,
       'id'             => $_GET['id'],
+      'withtemplate'   => 0
    ];
    echo "<div class='center'>";
    echo "<a href='" . PluginTasklistsTask::getFormURL(true) . "?id=" . $_GET['id'] . "'>" . __("View this item in his context") . "</a>";
    echo "</div>";
    echo "<hr>";
    $task = new PluginTasklistsTask();
-   $task->display($options);
+   $task->showForm($_GET['id'],$options);
 } else if (isset($_GET['plugin_tasklists_tasktypes_id'])
            && isset($_GET['plugin_tasklists_taskstates_id'])) {
    $options = [

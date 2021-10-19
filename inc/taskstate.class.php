@@ -38,7 +38,7 @@ if (!defined('GLPI_ROOT')) {
  */
 class PluginTasklistsTaskState extends CommonDropdown {
 
-   static $rightname = 'plugin_tasklists';
+   static $rightname = 'plugin_tasklists_config';
 
 
    /**
@@ -47,7 +47,7 @@ class PluginTasklistsTaskState extends CommonDropdown {
     * @return translated
     */
    static function getTypeName($nb = 0) {
-      return _n('Status', 'Statuses', $nb);
+      return _n('Status', 'Statuses', $nb, 'tasklists');
    }
 
    /**
@@ -303,5 +303,31 @@ class PluginTasklistsTaskState extends CommonDropdown {
       }
       return $columns['plugin_tasklists_taskstates_id'];
 
+   }
+
+   /**
+    * Have I the global right to "create" the Object
+    * May be overloaded if needed (ex KnowbaseItem)
+    *
+    * @return boolean
+    **/
+   static function canCreate() {
+      if (static::$rightname) {
+         return Session::haveRight(static::$rightname, 1);
+      }
+      return false;
+   }
+   static function canUpdate() {
+      if (static::$rightname) {
+         return Session::haveRight(static::$rightname, 1);
+      }
+      return false;
+   }
+
+   static function canDelete() {
+      if (static::$rightname) {
+         return Session::haveRight(static::$rightname, 1);
+      }
+      return false;
    }
 }

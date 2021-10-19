@@ -35,6 +35,7 @@ if (!defined('GLPI_ROOT')) {
  * Class PluginTasklistsTask
  */
 class PluginTasklistsTask extends CommonDBTM {
+   use Glpi\Features\Clonable;
 
    public    $dohistory  = true;
    static    $rightname  = 'plugin_tasklists';
@@ -222,6 +223,14 @@ class PluginTasklistsTask extends CommonDBTM {
          'name'     => __('Entity'),
          'datatype' => 'dropdown'
       ];
+      $tab[] = [
+         'id'        => '81',
+         'table'     => 'glpi_users',
+         'field'     => 'name',
+         'linkfield' => 'users_id_requester',
+         'name'      => _n('Requester', 'Requesters', 1),
+         'datatype'  => 'dropdown'
+      ];
       return $tab;
    }
 
@@ -252,8 +261,15 @@ class PluginTasklistsTask extends CommonDBTM {
 
       $this->fields['priority']     = 3;
       $this->fields['percent_done'] = 0;
-      $this->fields['users_id']     = Session::getLoginUserID();
       $this->fields['visibility']   = 2;
+   }
+
+
+   public function getCloneRelations() :array {
+      return [
+         Document_Item::class,
+         Notepad::class
+      ];
    }
 
    /**
@@ -288,15 +304,6 @@ class PluginTasklistsTask extends CommonDBTM {
 
    function post_addItem() {
       global $CFG_GLPI;
-
-      // Manage add from template
-      if (isset($this->input["_oldID"])) {
-         // ADD Documents
-         Document_Item::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-
-         //Add notepad
-         Notepad::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-      }
 
       if (isset($this->input['withtemplate'])
           && $this->input["withtemplate"] != 1
@@ -396,7 +403,7 @@ class PluginTasklistsTask extends CommonDBTM {
       $this->showFormHeader($options);
 
       echo "<tr class='tab_bg_1'>";
-
+      echo Html::hidden('id',['value'=>$ID]);
       echo "<td>" . __('Name') . "</td>";
       echo "<td>";
       Html::autocompletionTextField($this, "name", ['option' => "size='40'"]);
@@ -498,10 +505,29 @@ class PluginTasklistsTask extends CommonDBTM {
       Html::showDateField("due_date", ['value' => $this->fields["due_date"]]);
       echo "</td>";
       echo "</tr>";
-
       echo "<tr class='tab_bg_1'>";
 
-      echo "<td>" . __('User') . "</td><td>";
+      echo "<td>" . _n('Requester', 'Requesters', 1) . "</td><td>";
+      $users_id_requester = $this->fields['users_id_requester'];
+      if (isset($options['users_id_requester'])
+          && $options['users_id_requester']) {
+         $users_id_requester = $options['users_id_requester'];
+      }
+
+      User::dropdown(['name'   => "users_id_requester",
+                      'value'  => $users_id_requester,
+                      'entity' => $this->fields["entities_id"],
+                      'right'  => 'all']);
+      echo "</td>";
+
+      echo "<td></td>";
+      echo "<td>";
+      echo "</td>";
+
+      echo "</tr>";
+      echo "<tr class='tab_bg_1'>";
+
+      echo "<td>" . __('Technician') . "</td><td>";
       $users_id = $this->fields['users_id'];
       if (isset($options['users_id'])
           && $options['users_id']) {
@@ -764,7 +790,7 @@ class PluginTasklistsTask extends CommonDBTM {
 
       $values = [0 => Dropdown::EMPTY_VALUE];
 
-      while ($data = $DB->fetch_assoc($result)) {
+      while ($data = $DB->fetchAssoc($result)) {
          $values[$data['id']] = $data['name'];
       }
 
@@ -1073,8 +1099,8 @@ class PluginTasklistsTask extends CommonDBTM {
          foreach ($groupusers as $groupuser) {
             $groups[] = $groupuser["id"];
          }
-         if (($this->fields['visibility'] == 1 && $this->fields['users_id'] == Session::getLoginUserID())
-             || ($this->fields['visibility'] == 2 && ($this->fields['users_id'] == Session::getLoginUserID()
+         if (($this->fields['visibility'] == 1 && ($this->fields['users_id'] == Session::getLoginUserID() || $this->fields['users_id_requester'] == Session::getLoginUserID()))
+             || ($this->fields['visibility'] == 2 && ($this->fields['users_id'] == Session::getLoginUserID() || $this->fields['users_id_requester'] == Session::getLoginUserID()
                                                       || in_array(Session::getLoginUserID(), $groups)))
              || ($this->fields['visibility'] == 3)) {
             return true;

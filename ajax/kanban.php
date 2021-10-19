@@ -79,13 +79,17 @@ if (isset($_REQUEST['itemtype'])) {
 // Rights Checks
 if (isset($itemtype)) {
    if (in_array($action, ['refresh', 'get_switcher_dropdown', 'get_column'])) {
-      if (!$item->canView()) {
+      $itemtoV = $item;
+      if ($itemtype == PluginTasklistsTaskType::getType()){
+         $itemtoV = new PluginTasklistsTask();
+      }
+      if (!$itemtoV->canView()) {
          // Missing rights
          http_response_code(403);
          return;
       }
    }
-   if (in_array($action, ['update'])) {
+   if (in_array($action, ['update']) && isset($_REQUEST['items_id'])) {
       $item->getFromDB($_REQUEST['items_id']);
       if (!$item->canUpdateItem()) {
          // Missing rights
@@ -114,7 +118,7 @@ $checkParams = function ($required) {
 };
 
 // Action Processing
-if ($_REQUEST['action'] == 'update') {
+if ($_REQUEST['action'] == 'update' && isset($_REQUEST['items_id'])) {
    $checkParams(['column_field', 'column_value']);
    // Update project or task based on changes made in the Kanban
    $item->update([
