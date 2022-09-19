@@ -127,7 +127,7 @@ class PluginTasklistsTicket extends CommonDBTM {
       $canedit = $ticket->canEdit($ID);
       $rand    = mt_rand();
 
-      $query = "SELECT DISTINCT `glpi_plugin_tasklists_tasks`.* 
+      $query = "SELECT DISTINCT `glpi_plugin_tasklists_tasks`.* , `glpi_plugin_tasklists_tickets`.`id` AS LinkID
                 FROM `glpi_plugin_tasklists_tickets`
                 LEFT JOIN `glpi_plugin_tasklists_tasks`
                  ON (`glpi_plugin_tasklists_tickets`.`plugin_tasklists_tasks_id`=`glpi_plugin_tasklists_tasks`.`id`)
@@ -140,7 +140,7 @@ class PluginTasklistsTicket extends CommonDBTM {
       $tickets = [];
       $used    = [];
       if ($numrows = $DB->numrows($result)) {
-         while ($data = $DB->fetch_assoc($result)) {
+         while ($data = $DB->fetchAssoc($result)) {
             $tickets[$data['id']] = $data;
             $used[$data['id']]    = $data['id'];
          }
@@ -153,14 +153,14 @@ class PluginTasklistsTicket extends CommonDBTM {
          echo "<table class='tab_cadre_fixe'>";
          echo "<tr class='tab_bg_2'><th colspan='3'>" . __('Add task', 'tasklists') . "</th></tr>";
          echo "<tr class='tab_bg_2'><td>";
-         echo "<input type='hidden' name='tickets_id' value='$ID'>";
+         echo Html::hidden('tickets_id', ['value' => $ID]);
          PluginTasklistsTask::dropdown(['used'      => $used,
                                         'entity'    => $ticket->getEntityID(),
                                         'condition' => ['is_archived' => 0,
                                                         'is_deleted'  => 0,
                                                         'is_template' => 0]]);
          echo "</td><td class='center'>";
-         echo "<input type='submit' name='add' value=\"" . _sx('button', 'Add') . "\" class='submit'>";
+         echo Html::submit(_sx('button', 'Add'), ['name' => 'add', 'class' => 'btn btn-primary']);
          echo "</td>";
          echo "</tr></table>";
          Html::closeForm();
@@ -174,7 +174,8 @@ class PluginTasklistsTicket extends CommonDBTM {
             = ['num_displayed'    => min($_SESSION['glpilist_limit'], $numrows),
                'specific_actions' => ['purge' => _x('button', 'Delete permanently')],
                'container'        => 'mass' . __CLASS__ . $rand,
-               'extraparams'      => ['tickets_id' => $ticket->getID()]];
+//               'extraparams'      => ['tickets_id' => $ticket->getID()]
+         ];
          Html::showMassiveActions($massiveactionparams);
       }
 
@@ -198,7 +199,7 @@ class PluginTasklistsTicket extends CommonDBTM {
 
             echo "<tr class='tab_bg_1'>";
             echo "<td>";
-            echo Html::getMassiveActionCheckBox(__CLASS__, $data['id']);
+            echo Html::getMassiveActionCheckBox(__CLASS__, $data['LinkID']);
             echo "</td>";
 
             echo "<td>";
@@ -216,7 +217,7 @@ class PluginTasklistsTicket extends CommonDBTM {
             echo "</td>";
 
             echo "<td>";
-            echo Html::resume_text(Html::Clean($data['comment']), 80);
+            echo Html::resume_text(Glpi\RichText\RichText::getTextFromHtml($data['content']), 80);
             echo "</td>";
 
             echo "</tr>";
@@ -266,8 +267,8 @@ class PluginTasklistsTicket extends CommonDBTM {
       echo "</td></tr>";
 
       echo "<tr class='tab_bg_1 center'><td>";
-      echo "<input type='submit' name='ticket_link' value=\"" . _sx('button', 'Save') . "\" class='submit'>";
-      echo "<input type='hidden' name='plugin_tasklists_tasks_id' value=" . $ID . ">";
+      echo Html::hidden('plugin_tasklists_tasks_id', ['value' => $ID]);
+      echo Html::submit(_sx('button', 'Save'), ['name' => 'ticket_link', 'class' => 'btn btn-primary']);
       echo "</td></tr>";
 
       echo "</table>";

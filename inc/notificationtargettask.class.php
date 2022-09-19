@@ -38,6 +38,7 @@ class PluginTasklistsNotificationTargetTask extends NotificationTarget {
 
    const TASK_USER  = 6303;
    const TASK_GROUP = 6304;
+   const TASK_REQUESTER = 6305;
 
    /**
     * Return main notification events for the object type
@@ -66,6 +67,7 @@ class PluginTasklistsNotificationTargetTask extends NotificationTarget {
           || $event == 'deletetask') {
          $this->addTarget(self::TASK_USER, _n('User', 'Users', 1));
          $this->addTarget(self::TASK_GROUP, _n('Group', 'Groups', 1));
+         $this->addTarget(self::TASK_REQUESTER, _n('Requester', 'Requesters', 1));
       }
    }
 
@@ -88,6 +90,9 @@ class PluginTasklistsNotificationTargetTask extends NotificationTarget {
          case self::TASK_GROUP :
             $this->getGroupAddress();
             break;
+         case self::TASK_REQUESTER :
+            $this->getRequesterAddress();
+            break;
       }
    }
 
@@ -95,6 +100,9 @@ class PluginTasklistsNotificationTargetTask extends NotificationTarget {
    //Get recipient
    function getUserAddress() {
       return $this->addUserByField("users_id");
+   }
+   function getRequesterAddress() {
+      return $this->addUserByField("users_id_requester");
    }
 
 
@@ -113,9 +121,10 @@ class PluginTasklistsNotificationTargetTask extends NotificationTarget {
          $criteria['WHERE']['glpi_groups_users.groups_id'] = $this->obj->fields[$group_field];
          $iterator                                         = $DB->request($criteria);
 
-         while ($data = $iterator->next()) {
+         foreach ($iterator as $data) {
             //Add the user email and language in the notified users list
             $this->addToRecipientsList($data);
+            $iterator->next();
          }
       }
    }
@@ -197,6 +206,7 @@ class PluginTasklistsNotificationTargetTask extends NotificationTarget {
       $this->data['##lang.task.client##']      = __('Entity');
       $this->data['##lang.task.type##']        = __('Type');
       $this->data['##lang.task.users##']       = _n('User', 'Users', 1);
+      $this->data['##lang.task.requester##']       = _n('Requester', 'Requesters', 1);
       $this->data['##lang.task.groups##']      = _n('Group', 'Groups', 1);
       $this->data['##lang.task.actiontime##']  = __('Planned duration');
       $this->data['##lang.task.percentdone##'] = __('Percent done');
@@ -215,14 +225,15 @@ class PluginTasklistsNotificationTargetTask extends NotificationTarget {
       $this->data['##task.client##']      = $entity_name;
       $this->data['##task.type##']        = Dropdown::getDropdownName('glpi_plugin_tasklists_tasktypes',
                                                                       $this->obj->getField('plugin_tasklists_tasktypes_id'));
-      $this->data['##task.users##']       = Html::clean($dbu->getUserName($this->obj->getField("users_id")));
+      $this->data['##task.users##']       = getUserName($this->obj->getField("users_id"));
+      $this->data['##task.requester##']       = getUserName($this->obj->getField("users_id_requester"));
       $this->data['##task.groups##']      = Dropdown::getDropdownName('glpi_groups',
                                                                       $this->obj->getField("groups_id"));
       $this->data['##task.actiontime##']  = Html::timestampToString($this->obj->getField('actiontime'), false, true);
       $this->data['##task.percentdone##'] = Dropdown::getValueWithUnit($this->obj->getField('percent_done'), "%");
       $this->data['##task.duedate##']     = Html::convDate($this->obj->getField('due_date'));
       $comment                            = stripslashes(str_replace(['\r\n', '\n', '\r'], "<br/>", $this->obj->getField("comment")));
-      $this->data['##task.comment##']     = Html::clean($comment);
+      $this->data['##task.comment##']     = Glpi\RichText\RichText::getTextFromHtml($comment);
       $this->data['##task.priority##']    = CommonITILObject::getPriorityName($this->obj->getField("priority"));
       $this->data['##task.status##']      = PluginTasklistsTask::getStateName($this->obj->getField('plugin_tasklists_taskstates_id'));
       $this->data['##task.otherclient##'] = $this->obj->getField("client");
@@ -241,6 +252,7 @@ class PluginTasklistsNotificationTargetTask extends NotificationTarget {
                'task.name'        => __('Name'),
                'task.type'        => __('Type'),
                'task.users'       => _n('User', 'Users', 1),
+               'task.requester'       => _n('Requester', 'Requesters', 1),
                'task.groups'      => _n('Group', 'Groups', 1),
                'task.actiontime'  => __('Planned duration'),
                'task.percentdone' => __('Percent done'),

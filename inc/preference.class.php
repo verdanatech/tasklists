@@ -41,12 +41,21 @@ class PluginTasklistsPreference extends CommonDBTM {
     * @return string|translated
     */
    function getTabNameForItem(CommonGLPI $item, $withtemplate = 0) {
-      if ($item->getType() == 'Preference') {
+      if (Session::haveRight('plugin_tasklists', READ)
+          && $item->getType() == 'Preference') {
          return __('Tasks list', 'tasklists');
       }
       return '';
    }
 
+   /**
+    * @return string
+    */
+   static function getIcon() {
+      return PluginTasklistsTask::getIcon();
+   }
+   
+   
    /**
     * @param CommonGLPI $item
     * @param int        $tabnum
@@ -56,14 +65,14 @@ class PluginTasklistsPreference extends CommonDBTM {
     */
    static function displayTabContentForItem(CommonGLPI $item, $tabnum = 1, $withtemplate = 0) {
       $pref = new self();
-      $pref->showForm(Session::getLoginUserID());
+      $pref->showPreferenceForm(Session::getLoginUserID());
       return true;
    }
 
    /**
     * @param $user_id
     */
-   function showForm($user_id) {
+   function showPreferenceForm($user_id) {
       //If user has no preferences yet, we set default values
       if (!$this->getFromDB($user_id)) {
          $this->initPreferences($user_id);
@@ -84,16 +93,16 @@ class PluginTasklistsPreference extends CommonDBTM {
                                                  'condition' => ["id" => $types]]);
       echo "</td>";
       echo "</tr>";
-      echo "<tr class='tab_bg_1'><td>" . __("Automatic refreshing of the widgets that can be refreshed", "mydashboard") . "</td>";
+      echo "<tr class='tab_bg_1'><td>" . __("Automatic refreshing of tasklist", "tasklists") . "</td>";
       echo "<td>";
       Dropdown::showYesNo("automatic_refresh", $this->fields['automatic_refresh']);
       echo "</td>";
       echo "</tr>";
 
-      echo "<tr class='tab_bg_1'><td>" . __("Refresh every ", "mydashboard") . "</td>";
+      echo "<tr class='tab_bg_1'><td>" . __("Refresh every ", "tasklists") . "</td>";
       echo "<td>";
       Dropdown::showFromArray("automatic_refresh_delay", [1 => 1, 2 => 2, 5 => 5, 10 => 10, 30 => 30, 60 => 60],
-         ["value" => $this->fields['automatic_refresh_delay']]);
+                              ["value" => $this->fields['automatic_refresh_delay']]);
       echo " " . __('minute(s)', "mydashboard");
       echo "</td>";
       echo "</tr>";
@@ -132,9 +141,8 @@ class PluginTasklistsPreference extends CommonDBTM {
       $dbu  = new DbUtils();
       $data = $dbu->getAllDataFromTable($dbu->getTableForItemType(__CLASS__), ["id" => $users_id]);
       if (!empty($data)) {
-
          $first = array_pop($data);
-         if($field != "default_type"){
+         if ($field != "default_type") {
             return $first[$field];
          }
          if ($first[$field] > 0) {
@@ -154,7 +162,6 @@ class PluginTasklistsPreference extends CommonDBTM {
                return 0;
             }
          }
-
       } else {
          $values = PluginTasklistsTaskType::getAllForKanban();
          $data   = [];

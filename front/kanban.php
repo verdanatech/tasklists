@@ -34,14 +34,17 @@ Html::header(PluginTasklistsTask::getTypeName(2), '', "helpdesk", "plugintasklis
 $kanban = new PluginTasklistsKanban();
 
 if ($kanban->canView() || Session::haveRight("config", CREATE)) {
-
-   echo Html::script('/plugins/tasklists/lib/kanban/js/kanban.js');
-   echo Html::css('/plugins/tasklists/lib/kanban/css/kanban.css');
-
-   //$kanban->display();
-   if (!isset($_GET["context_id"]))
+   //AS module for SearchTokenizer
+//   echo "<script type='module' src='../../../js/modules/Kanban/Kanban.js'></script>";
+   echo "<script type='module' src='".PLUGIN_TASKLISTS_WEBDIR . "/lib/kanban/js/Kanban.js'></script>";
+   Html::requireJs('sortable');
+   Html::requireJs('kanban');
+   echo Html::css(PLUGIN_TASKLISTS_NOTFULL_DIR . '/lib/kanban/css/kanban.css');
+//   echo Html::script(PLUGIN_TASKLISTS_NOTFULL_DIR . "/lib/kanban/js/kanban-actions.js");
+   if (!isset($_GET["context_id"])) {
       $_GET["context_id"] = -1;
-   $kanban->showKanban($_GET["context_id"]);
+   }
+   PluginTasklistsKanban::showKanban($_GET["context_id"]);
 
 } else {
    Html::displayRightError();

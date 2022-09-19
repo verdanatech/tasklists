@@ -31,10 +31,16 @@ if (!defined('GLPI_ROOT')) {
    die("Sorry. You can't access directly to this file");
 }
 
+use Glpi\Plugin\Hooks;
+
 /**
  * Class PluginTasklistsTask
  */
 class PluginTasklistsTask extends CommonDBTM {
+   use Glpi\Features\Clonable;
+   use Glpi\Features\Teamwork;
+   //Needed for save cards
+   use Glpi\Features\Kanban;
 
    public    $dohistory  = true;
    static    $rightname  = 'plugin_tasklists';
@@ -51,6 +57,13 @@ class PluginTasklistsTask extends CommonDBTM {
       return _n('Task', 'Tasks', $nb);
    }
 
+
+   /**
+    * @return string
+    */
+   static function getIcon() {
+      return "ti ti-layout-kanban";
+   }
 
    /**
     * @return array
@@ -222,6 +235,43 @@ class PluginTasklistsTask extends CommonDBTM {
          'name'     => __('Entity'),
          'datatype' => 'dropdown'
       ];
+      $tab[] = [
+         'id'        => '81',
+         'table'     => 'glpi_users',
+         'field'     => 'name',
+         'linkfield' => 'users_id_requester',
+         'name'      => _n('Requester', 'Requesters', 1),
+         'datatype'  => 'dropdown'
+      ];
+
+      $tab[] = [
+         'id'                 => '19',
+         'table'              => 'glpi_plugin_tasklists_tasks_comments',
+         'field'              => 'id',
+         'name'               => _x('quantity', 'Number of comments', 'tasklists'),
+         'forcegroupby'       => true,
+         'usehaving'          => true,
+         'datatype'           => 'count',
+         'massiveaction'      => false,
+         'joinparams'         => [
+            'jointype'           => 'child'
+         ]
+      ];
+
+      $tab[] = [
+         'id'                 => '20',
+         'table'              => 'glpi_plugin_tasklists_tickets',
+         'field'              => 'id',
+         'name'               => __('Number of tickets'),
+         'forcegroupby'       => true,
+         'usehaving'          => true,
+         'datatype'           => 'count',
+         'massiveaction'      => false,
+         'joinparams'         => [
+            'jointype'           => 'child'
+         ]
+      ];
+
       return $tab;
    }
 
@@ -252,8 +302,15 @@ class PluginTasklistsTask extends CommonDBTM {
 
       $this->fields['priority']     = 3;
       $this->fields['percent_done'] = 0;
-      $this->fields['users_id']     = Session::getLoginUserID();
       $this->fields['visibility']   = 2;
+   }
+
+
+   public function getCloneRelations(): array {
+      return [
+         Document_Item::class,
+         Notepad::class
+      ];
    }
 
    /**
@@ -288,15 +345,6 @@ class PluginTasklistsTask extends CommonDBTM {
 
    function post_addItem() {
       global $CFG_GLPI;
-
-      // Manage add from template
-      if (isset($this->input["_oldID"])) {
-         // ADD Documents
-         Document_Item::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-
-         //Add notepad
-         Notepad::cloneItem($this->getType(), $this->input["_oldID"], $this->fields['id']);
-      }
 
       if (isset($this->input['withtemplate'])
           && $this->input["withtemplate"] != 1
@@ -396,18 +444,18 @@ class PluginTasklistsTask extends CommonDBTM {
       $this->showFormHeader($options);
 
       echo "<tr class='tab_bg_1'>";
-
+      echo Html::hidden('id', ['value' => $ID]);
       echo "<td>" . __('Name') . "</td>";
       echo "<td>";
-      Html::autocompletionTextField($this, "name", ['option' => "size='40'"]);
-      if (isset($options['from_edit_ajax'])
-          && $options['from_edit_ajax']) {
-         echo Html::hidden('from_edit_ajax', ['value' => $options['from_edit_ajax']]);
-      }
-      if (isset($options['withtemplate']) && empty($options['withtemplate'])) {
-         $options['withtemplate'] = 0;
-      }
-      echo Html::hidden('withtemplate', ['value' => $options['withtemplate']]);
+      echo Html::input('name', ['value' => $this->fields['name'], 'size' => 40]);
+//      if (isset($options['from_edit_ajax'])
+//          && $options['from_edit_ajax']) {
+//         echo Html::hidden('from_edit_ajax', ['value' => $options['from_edit_ajax']]);
+//      }
+//      if (isset($options['withtemplate']) && empty($options['withtemplate'])) {
+//         $options['withtemplate'] = 0;
+//      }
+//      echo Html::hidden('withtemplate', ['value' => $options['withtemplate']]);
       echo "</td>";
 
       $plugin_tasklists_tasktypes_id = $this->fields["plugin_tasklists_tasktypes_id"];
@@ -473,7 +521,7 @@ class PluginTasklistsTask extends CommonDBTM {
          $params = ['entities_id' => '__VALUE__',
                     'entity'      => $this->fields["entities_id"]];
          $JS     .= Ajax::updateItemJsCode("plugin_tasklists_entity",
-                                           $CFG_GLPI["root_doc"] . "/plugins/tasklists/ajax/inputEntity.php",
+                                           PLUGIN_TASKLISTS_WEBDIR . "/ajax/inputEntity.php",
                                            $params, 'dropdown_entities_id' . $rand_entity, false);
          $JS     .= "}";
          echo Html::scriptBlock($JS);
@@ -490,18 +538,36 @@ class PluginTasklistsTask extends CommonDBTM {
           && $options['client']) {
          $client = $options['client'];
       }
-      Html::autocompletionTextField($this, "client", ['option' => "size='40'",
-                                                      'value'  => $client]);
+      echo Html::input('client', ['value' => $client, 'size' => 40]);
       echo "</td>";
       echo "<td>" . __("Due date", "tasklists") . "</td>";
       echo "<td>";
       Html::showDateField("due_date", ['value' => $this->fields["due_date"]]);
       echo "</td>";
       echo "</tr>";
-
       echo "<tr class='tab_bg_1'>";
 
-      echo "<td>" . __('User') . "</td><td>";
+      echo "<td>" . _n('Requester', 'Requesters', 1) . "</td><td>";
+      $users_id_requester = $this->fields['users_id_requester'];
+      if (isset($options['users_id_requester'])
+          && $options['users_id_requester']) {
+         $users_id_requester = $options['users_id_requester'];
+      }
+
+      User::dropdown(['name'   => "users_id_requester",
+                      'value'  => $users_id_requester,
+                      'entity' => $this->fields["entities_id"],
+                      'right'  => 'all']);
+      echo "</td>";
+
+      echo "<td></td>";
+      echo "<td>";
+      echo "</td>";
+
+      echo "</tr>";
+      echo "<tr class='tab_bg_1'>";
+
+      echo "<td>" . __('Technician') . "</td><td>";
       $users_id = $this->fields['users_id'];
       if (isset($options['users_id'])
           && $options['users_id']) {
@@ -556,7 +622,7 @@ class PluginTasklistsTask extends CommonDBTM {
       $params = ['plugin_tasklists_tasktypes_id' => '__VALUE__',
                  'entity'                        => $this->fields["entities_id"]];
       $JS     .= Ajax::updateItemJsCode("plugin_tasklists_state",
-                                        $CFG_GLPI["root_doc"] . "/plugins/tasklists/ajax/dropdownState.php",
+                                        PLUGIN_TASKLISTS_WEBDIR . "/ajax/dropdownState.php",
                                         $params, 'dropdown_plugin_tasklists_tasktypes_id' . $rand_type, false);
       $JS     .= "}";
       echo Html::scriptBlock($JS);
@@ -574,8 +640,8 @@ class PluginTasklistsTask extends CommonDBTM {
       $content_id = "comment$rand_text";
       $cols       = 100;
       $rows       = 15;
-      Html::textarea(['name'            => 'comment',
-                      'value'           => $this->fields["comment"],
+      Html::textarea(['name'            => 'content',
+                      'value'           => $this->fields["content"],
                       'rand'            => $rand_text,
                       'editor_id'       => $content_id,
                       'enable_richtext' => true,
@@ -764,7 +830,7 @@ class PluginTasklistsTask extends CommonDBTM {
 
       $values = [0 => Dropdown::EMPTY_VALUE];
 
-      while ($data = $DB->fetch_assoc($result)) {
+      while ($data = $DB->fetchAssoc($result)) {
          $values[$data['id']] = $data['name'];
       }
 
@@ -780,13 +846,13 @@ class PluginTasklistsTask extends CommonDBTM {
                  'used'      => $p['used']
       ];
 
-      $out .= Ajax::updateItemOnSelectEvent($field_id, "show_" . $p['name'] . $rand, $CFG_GLPI["root_doc"] . "/plugins/tasklists/ajax/dropdownTypeTasks.php", $params, false);
+      $out .= Ajax::updateItemOnSelectEvent($field_id, "show_" . $p['name'] . $rand, PLUGIN_TASKLISTS_WEBDIR . "/ajax/dropdownTypeTasks.php", $params, false);
 
       $out .= "<span id='show_" . $p['name'] . "$rand'>";
       $out .= "</span>\n";
 
       $params['tasktype'] = 0;
-      $out                .= Ajax::updateItem("show_" . $p['name'] . $rand, $CFG_GLPI["root_doc"] . "/plugins/tasklists/ajax/dropdownTypeTasks.php", $params, false);
+      $out                .= Ajax::updateItem("show_" . $p['name'] . $rand, PLUGIN_TASKLISTS_WEBDIR . "/ajax/dropdownTypeTasks.php", $params, false);
       if ($p['display']) {
          echo $out;
          return $rand;
@@ -831,7 +897,7 @@ class PluginTasklistsTask extends CommonDBTM {
       switch ($ma->getAction()) {
          case "transfer" :
             Dropdown::show('Entity');
-            echo Html::submit(_x('button', 'Post'), ['name' => 'massiveaction']);
+            echo Html::submit(_x('button', 'Post'), ['name' => 'massiveaction', 'class' => 'btn btn-primary']);
             return true;
             break;
       }
@@ -1073,8 +1139,8 @@ class PluginTasklistsTask extends CommonDBTM {
          foreach ($groupusers as $groupuser) {
             $groups[] = $groupuser["id"];
          }
-         if (($this->fields['visibility'] == 1 && $this->fields['users_id'] == Session::getLoginUserID())
-             || ($this->fields['visibility'] == 2 && ($this->fields['users_id'] == Session::getLoginUserID()
+         if (($this->fields['visibility'] == 1 && ($this->fields['users_id'] == Session::getLoginUserID() || $this->fields['users_id_requester'] == Session::getLoginUserID()))
+             || ($this->fields['visibility'] == 2 && ($this->fields['users_id'] == Session::getLoginUserID() || $this->fields['users_id_requester'] == Session::getLoginUserID()
                                                       || in_array(Session::getLoginUserID(), $groups)))
              || ($this->fields['visibility'] == 3)) {
             return true;
@@ -1248,4 +1314,185 @@ class PluginTasklistsTask extends CommonDBTM {
       echo "</table></div>";
    }
 
+   /**
+    * @since 0.84
+    **/
+   public function loadActors() {
+
+      //      if (!empty($this->grouplinkclass)) {
+      //         $class        = new $this->grouplinkclass();
+      $this->groups = [$this->fields['groups_id']];
+      //      }
+
+      //      if (!empty($this->userlinkclass)) {
+      //         $class        = new $this->userlinkclass();
+      $this->users = [$this->fields['users_id']];
+      //      }
+      //
+      //      if (!empty($this->supplierlinkclass)) {
+      //         $class            = new $this->supplierlinkclass();
+      //         $this->suppliers  = $class->getActors($this->fields['id']);
+      //      }
+   }
+
+   public static function getTeamItemtypes(): array {
+      return ['User', 'Group'];
+   }
+
+   public function getTeam(): array {
+      global $DB;
+
+      $team = [];
+
+      $team_itemtypes = static::getTeamItemtypes();
+
+      /** @var CommonDBTM $itemtype */
+      foreach ($team_itemtypes as $itemtype) {
+         /** @var CommonDBTM $link_class */
+         $link_class = null;
+         switch ($itemtype) {
+            case 'User':
+               $link_class = "PluginTasklistsTask";
+               break;
+            case 'Group':
+               $link_class = "PluginTasklistsTask";
+               break;
+         }
+
+         if ($link_class === null) {
+            continue;
+         }
+
+         $select = [];
+         if ($itemtype === 'User') {
+            $select = [$link_class::getTable() . '.' . $itemtype::getForeignKeyField(), $itemtype::getTable() . '.' . 'name', 'realname', 'firstname'];
+         } else {
+            $select = [
+               $link_class::getTable() . '.' . $itemtype::getForeignKeyField(), $itemtype::getTable() . '.' . 'name',
+               new QueryExpression('NULL as realname'),
+               new QueryExpression('NULL as firstname')
+            ];
+         }
+
+         $it = $DB->request([
+                               'SELECT'    => $select,
+                               'FROM'      => $link_class::getTable(),
+                               'WHERE'     => [$link_class::getTable() . '.' . 'id' => $this->getID()],
+                               'LEFT JOIN' => [
+                                  $itemtype::getTable() => [
+                                     'ON' => [
+                                        $itemtype::getTable()   => 'id',
+                                        $link_class::getTable() => $itemtype::getForeignKeyField()
+                                     ]
+                                  ]
+                               ]
+                            ]);
+         foreach ($it as $data) {
+            $items_id = $data[$itemtype::getForeignKeyField()];
+            $member   = [
+               'itemtype'     => $itemtype,
+               'items_id'     => $items_id,
+               'id'           => $items_id,
+               'role'         => 2,
+               'name'         => $data['name'],
+               'realname'     => $data['realname'],
+               'firstname'    => $data['firstname'],
+               'display_name' => formatUserName($items_id, $data['name'], $data['realname'], $data['firstname'])
+            ];
+            $team[]   = $member;
+         }
+      }
+
+      return $team;
+   }
+
+
+   public static function getTeamRoles(): array {
+      return [
+         \CommonITILActor::ASSIGN,
+      ];
+   }
+
+   public static function getTeamRoleName(int $role, int $nb = 1): string {
+      switch ($role) {
+         case \CommonITILActor::ASSIGN:
+            return _n('Assignee', 'Assignees', $nb);
+      }
+      return '';
+   }
+
+
+   public function addTeamMember(string $itemtype, int $items_id, array $params = []): bool {
+      $role = CommonITILActor::ASSIGN;
+
+      /** @var CommonDBTM $link_class */
+      $link_class = null;
+      switch ($itemtype) {
+         case 'User':
+            $link_class = "PluginTasklistsTask";
+            $field      = "users_id";
+            break;
+         case 'Group':
+            $link_class = "PluginTasklistsTask";
+            $field      = "groups_id";
+            break;
+      }
+
+      if ($link_class === null) {
+         return false;
+      }
+
+      $link_item = new $link_class();
+      /** @var CommonDBTM $itemtype */
+      $result = $link_item->update([$field => $items_id,
+                                    'id'   => $this->getID()]);
+      return (bool)$result;
+   }
+
+   public function deleteTeamMember(string $itemtype, int $items_id, array $params = []): bool {
+      $role = CommonITILActor::ASSIGN;
+
+      /** @var CommonDBTM $link_class */
+      $link_class = null;
+      switch ($itemtype) {
+         case 'User':
+            $link_class = "PluginTasklistsTask";
+            $field      = "users_id";
+            break;
+         case 'Group':
+            $link_class = "PluginTasklistsTask";
+            $field      = "groups_id";
+            break;
+      }
+
+      if ($link_class === null) {
+         return false;
+      }
+
+      $link_item = new $link_class();
+      /** @var CommonDBTM $itemtype */
+      $result = $link_item->update([$field => '0',
+                                    'id'   => $this->getID()]);
+      return (bool)$result;
+   }
+
+   public static function getDataToDisplayOnKanban($ID, $criteria = []) {
+      // TODO: Implement getDataToDisplayOnKanban() method.
+   }
+
+   public static function getKanbanColumns($ID, $column_field = null, $column_ids = [], $get_default = false) {
+      // TODO: Implement getKanbanColumns() method.
+   }
+
+   public static function showKanban($ID) {
+      // TODO: Implement showKanban() method.
+   }
+
+   public static function getAllForKanban($active = true, $current_id = -1) {
+      // TODO: Implement getAllForKanban() method.
+   }
+
+   public static function getAllKanbanColumns($column_field = null, $column_ids = [], $get_default = false) {
+      // TODO: Implement getAllKanbanColumns() method.
+   }
 }

@@ -38,7 +38,7 @@ if (!defined('GLPI_ROOT')) {
  */
 class PluginTasklistsTaskState extends CommonDropdown {
 
-   static $rightname = 'plugin_tasklists';
+   static $rightname = 'plugin_tasklists_config';
 
 
    /**
@@ -47,7 +47,7 @@ class PluginTasklistsTaskState extends CommonDropdown {
     * @return translated
     */
    static function getTypeName($nb = 0) {
-      return _n('Status', 'Statuses', $nb);
+      return _n('Status', 'Statuses', $nb, 'tasklists');
    }
 
    /**
@@ -64,7 +64,7 @@ class PluginTasklistsTaskState extends CommonDropdown {
       echo "<tr class='tab_bg_1'>";
       echo "<td>" . __('Name') . "</td>";
       echo "<td>";
-      Html::autocompletionTextField($this, "name", ['option' => "size='40'"]);
+      echo Html::input('name', ['value' => $this->fields['name'], 'size' => 40]);
       echo "</td>";
       if (isset($options['from_edit_ajax'])
           && $options['from_edit_ajax']) {
@@ -73,9 +73,12 @@ class PluginTasklistsTaskState extends CommonDropdown {
 
       echo "<td rowspan='4'>" . __('Description') . "</td>";
       echo "<td rowspan='4'>";
-      echo "<textarea name='comment' id ='comment' cols='45' rows='3'>" .
-           $this->fields['comment'] .
-           "</textarea>";
+      Html::textarea(['name'            => 'comment',
+                      'value'           => $this->fields['comment'],
+                      'id'           => 'comment',
+                      'cols'       => 45,
+                      'rows'       => 3,
+                      'enable_richtext' => false]);
       echo "</td>";
       echo "</tr>";
 
@@ -289,19 +292,46 @@ class PluginTasklistsTaskState extends CommonDropdown {
    /**
     * @return mixed
     */
-   static function getAllKanbanColumns() {
+//   static function getAllKanbanColumns() {
+//
+//      $taskStates = new self();
+//      $columns    = ['plugin_tasklists_taskstates_id' => []];
+//      $restrict   = [];
+//      $allstates  = $taskStates->find($restrict, ['is_finished ASC', 'id']);
+//      foreach ($allstates as $state) {
+//         $columns['plugin_tasklists_taskstates_id'][$state['id']] = [
+//            'name'         => $state['name'],
+//            'header_color' => $state['color']
+//         ];
+//      }
+//
+//      return $columns['plugin_tasklists_taskstates_id'];
+//
+//   }
 
-      $taskStates = new self();
-      $columns    = ['plugin_tasklists_taskstates_id' => []];
-      $restrict   = [];
-      $allstates  = $taskStates->find($restrict, ['is_finished ASC', 'id']);
-      foreach ($allstates as $state) {
-         $columns['plugin_tasklists_taskstates_id'][$state['id']] = [
-            'name'         => $state['name'],
-            'header_color' => $state['color']
-         ];
+   /**
+    * Have I the global right to "create" the Object
+    * May be overloaded if needed (ex KnowbaseItem)
+    *
+    * @return boolean
+    **/
+   static function canCreate() {
+      if (static::$rightname) {
+         return Session::haveRight(static::$rightname, 1);
       }
-      return $columns['plugin_tasklists_taskstates_id'];
+      return false;
+   }
+   static function canUpdate() {
+      if (static::$rightname) {
+         return Session::haveRight(static::$rightname, 1);
+      }
+      return false;
+   }
 
+   static function canDelete() {
+      if (static::$rightname) {
+         return Session::haveRight(static::$rightname, 1);
+      }
+      return false;
    }
 }

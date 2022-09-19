@@ -38,6 +38,10 @@ if (!defined('GLPI_ROOT')) {
  */
 class PluginTasklistsTaskType extends CommonTreeDropdown {
 
+   use \Glpi\Features\Kanban;
+
+   static $rightname = 'plugin_tasklists';
+
    /**
     * @param int $nb
     *
@@ -48,7 +52,12 @@ class PluginTasklistsTaskType extends CommonTreeDropdown {
       return _n('Context', 'Contexts', $nb, 'tasklists');
    }
 
-   static $rightname = 'plugin_tasklists';
+   /**
+    * @return string
+    */
+   static function getIcon() {
+      return "ti ti-layout-kanban";
+   }
 
    /**
     * @param array $options
@@ -70,7 +79,7 @@ class PluginTasklistsTaskType extends CommonTreeDropdown {
    /**
     * @return array
     */
-   static function getAllForKanban() {
+   static function getAllForKanban($active = true, $current_id = -1) {
       $self = new self();
 
       $list  = $self->find([], ["completename ASC"]);
@@ -93,7 +102,7 @@ class PluginTasklistsTaskType extends CommonTreeDropdown {
     */
    public function forceGlobalState() {
       // All users must be using the global state unless viewing the global Kanban
-      return $this->getID() > 0;
+      return false;
    }
 
    /**
@@ -115,7 +124,7 @@ class PluginTasklistsTaskType extends CommonTreeDropdown {
 
          if ($result = $DB->query($query)) {
             if ($DB->numrows($result)) {
-               $data                                   = $DB->fetch_assoc($result);
+               $data                                   = $DB->fetchAssoc($result);
                $data                                   = Toolbox::addslashes_deep($data);
                $input['name']                          = $data['name'];
                $input['entities_id']                   = $entity;
@@ -143,84 +152,56 @@ class PluginTasklistsTaskType extends CommonTreeDropdown {
     *
     * @return array
     */
-   static function getKanbanColumns($ID, $column_field, $column_ids = [], $get_default = false) {
+
+   static function getKanbanColumns($ID, $column_field = null, $column_ids = [], $get_default = false) {
 
       if (!PluginTasklistsTypeVisibility::isUserHaveRight($ID)) {
          return [];
       }
-      $dbu        = new DbUtils();
-      $cond       = ["plugin_tasklists_taskstates_id" => 0,
-                     "plugin_tasklists_tasktypes_id"  => $ID,
-                     "is_deleted"                     => 0,
-                     "is_template"                    => 0,
-                     "is_archived"                    => isset($_SESSION["archive"][Session::getLoginUserID()]) ? json_decode($_SESSION["archive"][Session::getLoginUserID()]) : 0]
-                    + $dbu->getEntitiesRestrictCriteria('glpi_plugin_tasklists_tasks', '', $_SESSION["glpiactiveentities"], true);
-      $countTasks = $dbu->countElementsInTable($dbu->getTableForItemType('PluginTasklistsTasks'),
-                                               $cond);
-      $states[]   = ['id'       => 0,
-                     'name'     => __('Backlog', 'tasklists'),
-                     'rank'     => 0,
-                     'count'    => $countTasks,
-                     'folded'   => PluginTasklistsItem_Kanban::loadStateForItem(PluginTasklistsTaskType::getType(), $ID, 0),
-                     'finished' => 0];
-      $nb         = 1;
-      $datastates = $dbu->getAllDataFromTable($dbu->getTableForItemType('PluginTasklistsTaskState'));
-      if (!empty($datastates)) {
+      $dbu = new DbUtils();
+      //      $datastates = $dbu->getAllDataFromTable($dbu->getTableForItemType('PluginTasklistsTaskState'));
+
+      $states[0] = [
+         'id'              => 0,
+         'name'            => __('Backlog', 'tasklists'),
+         'header_color'    => "#CCC",
+         'header_fg_color' => Toolbox::getFgColor("#CCC", 50),
+         'drop_only'       => 0,
+         'finished'        => 0,
+         '_protected'   => true
+      ];
+
+      if (!empty($column_ids)) {
+         $PluginTasklistsTaskState = new PluginTasklistsTaskState();
+         $datastates               = $PluginTasklistsTaskState->find(["id" => $column_ids]);
+      }
+
+      if (!empty($column_ids) && !empty($datastates)) {
+
          foreach ($datastates as $datastate) {
-            $tasktypes = json_decode($datastate['tasktypes']);
-            if (is_array($tasktypes)) {
-               if (in_array($ID, $tasktypes)) {
-                  $condition = ['plugin_tasklists_taskstates_id' => $datastate['id'],
-                                'plugin_tasklists_tasktypes_id'  => $ID];
-                  $order     = new PluginTasklistsStateOrder();
-                  $ranks     = $order->find($condition);
-                  $ranking   = 0;
-                  if (count($ranks) > 0) {
-                     foreach ($ranks as $rank) {
-                        $ranking = $rank['ranking'];
-                     }
-                  }
-                  $cond       = ["plugin_tasklists_taskstates_id" => $datastate['id'],
-                                 "plugin_tasklists_tasktypes_id"  => $ID,
-                                 "is_template"                    => 0,
-                                 "is_deleted"                     => 0,
-                                 "is_archived"                    => isset($_SESSION["archive"][Session::getLoginUserID()]) ? json_decode($_SESSION["archive"][Session::getLoginUserID()]) : 0]
-                                + $dbu->getEntitiesRestrictCriteria('glpi_plugin_tasklists_tasks', '', $_SESSION["glpiactiveentities"], true);
-                  $countTasks = $dbu->countElementsInTable($dbu->getTableForItemType('PluginTasklistsTasks'),
-                                                           $cond);
-
-                  if (empty($name = DropdownTranslation::getTranslatedValue($datastate['id'], 'PluginTasklistsTaskState', 'name', $_SESSION['glpilanguage']))) {
-                     $name = $datastate['name'];
-                  }
-
-                  $states[] = ['id'       => $datastate['id'],
-                               'color'    => $datastate['color'],
-                               'name'     => $name,
-                               'rank'     => $ranking,
-                               'count'    => $countTasks,
-                               'folded'   => PluginTasklistsItem_Kanban::loadStateForItem(PluginTasklistsTaskType::getType(), $ID, $datastate['id']),
-                               'finished' => $datastate['is_finished']];
-
-                  $states_ranked = [];
-                  foreach ($states as $key => $row) {
-                     $states_ranked[$key] = $row['rank'];
-                  }
-                  array_multisort($states_ranked, SORT_ASC, $states);
-
-                  $colors[$datastate['id']] = $datastate['color'];
-
-                  $nb++;
-
-               }
+            if (empty($name = DropdownTranslation::getTranslatedValue($datastate['id'], 'PluginTasklistsTaskState', 'name', $_SESSION['glpilanguage']))) {
+               $name = $datastate['name'];
             }
+            $states[$datastate['id']] = [
+               'id'              => $datastate['id'],
+               'header_color'    => $datastate['color'],
+               'header_fg_color' => Toolbox::getFgColor($datastate['color'], 50),
+               'name'            => $name,
+               'finished'        => $datastate['is_finished']];
+            $colors[$datastate['id']] = $datastate['color'];
          }
       }
       $nstates = [];
-      $task    = new PluginTasklistsTask();
+
+      $task = new PluginTasklistsTask();
       foreach ($states as $state) {
 
-         $tasks = [];
-         $datas = $task->find(["plugin_tasklists_tasktypes_id" => $ID, "plugin_tasklists_taskstates_id" => $state["id"], 'is_deleted' => 0, 'is_template' => 0], ['priority DESC']);
+         $selected_state = $state;
+         $tasks          = [];
+         $datas          = $task->find(["plugin_tasklists_tasktypes_id"  => $ID,
+                                        "plugin_tasklists_taskstates_id" => $state['id'],
+                                        'is_deleted'                     => 0,
+                                        'is_template'                    => 0], ['priority DESC,name']);
 
          foreach ($datas as $data) {
             $array = isset($_SESSION["archive"][Session::getLoginUserID()]) ? json_decode($_SESSION["archive"][Session::getLoginUserID()]) : [0];
@@ -231,14 +212,7 @@ class PluginTasklistsTaskType extends CommonTreeDropdown {
             if (!in_array(-1, $usersallowed) && !in_array($data['users_id'], $usersallowed)) {
                continue;
             }
-            $user = new User();
-            $link = "";
-            if ($user->getFromDB($data['users_id'])) {
-               $link = "<div class='kanban_user_picture_border_verysmall'>";
-               $link .= "<a target='_blank' href='" . Toolbox::getItemTypeFormURL('User') . "?id=" . $data['users_id'] . "'><img title=\"" . $dbu->getUserName($data['users_id']) . "\" class='kanban_user_picture_verysmall' alt=\"" . $dbu->getUserName($data['users_id']) . "\" src='" .
-                        User::getThumbnailURLForPicture($user->fields['picture']) . "'></a>";
-               $link .= "</div>";
-            }
+
             $plugin_tasklists_taskstates_id = $data['plugin_tasklists_taskstates_id'];
             $finished                       = 0;
             $finished_style                 = 'style="display: inline;"';
@@ -267,7 +241,8 @@ class PluginTasklistsTaskType extends CommonTreeDropdown {
                }
 
                $right = 0;
-               if (($data['users_id'] == Session::getLoginUserID() && Session::haveRight("plugin_tasklists", UPDATE))
+               if (($data['users_id'] == Session::getLoginUserID()
+                    && Session::haveRight("plugin_tasklists", UPDATE))
                    || Session::haveRight("plugin_tasklists_see_all", 1)) {
                   $right = 1;
                }
@@ -284,10 +259,28 @@ class PluginTasklistsTaskType extends CommonTreeDropdown {
                }
                $client = (empty($data['client'])) ? $entity_name : $data['client'];
 
-               $comment = Toolbox::unclean_cross_side_scripting_deep(html_entity_decode($data["comment"],
-                                                                                        ENT_QUOTES,
-                                                                                        "UTF-8"));
+               //               $comment = Glpi\Toolbox\Sanitizer::unsanitize($data["content"]);
 
+               // Core content
+               $content      = "<div class='kanban-core-content'>";
+               $content      .= "<div class='flex-break'>";
+               $bgcolor      = $_SESSION["glpipriority_" . $data['priority']];
+               $content      .= __('Priority') . "&nbsp;:&nbsp;<i class='fas fa-circle' style='color: $bgcolor'></i>&nbsp;" . CommonITILObject::getPriorityName($data['priority']);
+               $content      .= "</div>";
+               $rich_content = "";
+               if ($data['content'] != null) {
+                  $rich_content = Glpi\RichText\RichText::getTextFromHtml($data['content'], false, true);
+               }
+               $content .= Html::resume_text($rich_content, 100);
+               $content .= "</div>";
+               $content .= "<div align='right' class='endfooter b'>" . $client . "</div>";
+               $content .= "<div align='right' class='endfooter'>" . $actiontime . "</div>";
+               $content .= "<div align='right' class='endfooter'>" . $duedate . "</div>";
+               // Percent Done
+               $content    .= "<div class='flex-break'></div>";
+               $content    .= Html::progress(100, $data['percent_done']);
+               $content    .= "</div>";
+               $content    .= "<div align='right' class='endfooter'>" . $data['percent_done'] . "%</div>";
                $nbcomments = "";
                $nb         = 0;
                $where      = [
@@ -301,44 +294,165 @@ class PluginTasklistsTaskType extends CommonTreeDropdown {
                if ($nb > 0) {
                   $nbcomments = " (" . $nb . ") ";
                }
-               $linkname = $data["name"];
-               if ($_SESSION["glpiis_ids_visible"]
-                   || empty($data["name"])) {
-                  $linkname = sprintf(__('%1$s (%2$s)'), $linkname, $data["id"]);
+
+               $itemtype        = "PluginTasklistsTask";
+               $meta            = [];
+               $metadata_values = ['name', 'content'];
+               foreach ($metadata_values as $metadata_value) {
+                  if (isset($data[$metadata_value])) {
+                     $meta[$metadata_value] = $data[$metadata_value];
+                  }
+               }
+               //               if (isset($meta['_metadata']['content']) && is_string($meta['_metadata']['content'])) {
+               //                  $meta['_metadata']['content'] = Glpi\RichText\RichText::getTextFromHtml($tasks['_metadata']['content'], false, true);
+               //               } else {
+               //                  $meta['_metadata']['content'] = '';
+               //               }
+
+               // Create a fake item to get just the actors without loading all other information about items.
+               //               $temp_item = new PluginTasklistsTask();
+               //               $temp_item->fields['id'] = $data['id'];
+               //               $temp_item->loadActors();
+
+               // Build team member data
+               $supported_teamtypes = [
+                  //                  'User' => ['id', 'firstname', 'realname'],
+                  //                  'Group' => ['id', 'name'],
+                  //                  'Supplier' => ['id', 'name'],
+               ];
+               //               $members = [
+               //                  'User'      => $temp_item->fields['users_id'],
+               //                  'Group'     => $temp_item->fields['groups_id'],
+               //                  'Supplier'   => $temp_item->getSuppliers(CommonITILActor::ASSIGN),
+               //               ];
+               $team = [];
+               //               foreach ($supported_teamtypes as $itemtype => $fields) {
+               //                  $fields[] = 'id';
+               //                  $fields[] = new QueryExpression($DB->quoteValue($itemtype) . ' AS ' . $DB->quoteName('itemtype'));
+               //
+               //                  $member_ids = array_map(static function ($e) use ($itemtype) {
+               //                     return $e[$itemtype::getForeignKeyField()];
+               //                  }, $members[$itemtype]);
+               //                  if (count($member_ids)) {
+               //                     $itemtable = $itemtype::getTable();
+               //                     $all_items = $DB->request([
+               //                                                  'SELECT'    => $fields,
+               //                                                  'FROM'      => $itemtable,
+               //                                                  'WHERE'     => [
+               //                                                     "{$itemtable}.id"   => $member_ids
+               //                                                  ]
+               ////                                               ]);
+               //               $team = [];
+               //                  $all_items[] = ['itemtype' => 'User', 'items_id'=> $data['users_id']];
+               //                  $all_items[] = ['itemtype' => 'Group', 'items_id'=> $data['groups_id']];
+               ////                     $all_members = [];
+               //                     foreach ($all_items as $k => $member_data) {
+               //                        $member_data['itemtype'] = $member_data['itemtype'];
+               //                        $member_data['id'] = $member_data['items_id'];
+               //                        $member_data['role'] = 2;
+               ////                        if ($member_data['itemtype'] === User::class) {
+               ////                           $member_data['name'] = formatUserName(
+               ////                              $member_data['id'],
+               ////                              '',
+               ////                              $member_data['realname'],
+               ////                              $member_data['firstname']
+               ////                           );
+               ////                        }
+               //                        $team[] = $member_data;
+               //                     }
+               ////                  }
+               ////               }
+               //               Toolbox::logInfo($team);
+               $task->getFromDB($data['id']);
+               $team = $task->getTeam();
+
+               if (isset($stateT->fields['color']) && $stateT->fields['color'] != null) {
+                  $bgcolor = self::getFgColor($stateT->fields['color'], 1);
+               } else {
+                  $bgcolor = "#FFF";
                }
 
-               $tasks[] = ['id'             => $data['id'],
-                           'title'          => $linkname . $nbcomments,
+               $rich_content = "";
+               if ($data['content'] != null) {
+                  $rich_content = Glpi\RichText\RichText::getTextFromHtml($data['content'], false, true);
+               }
+
+               $title = Html::link($data['name'], $itemtype::getFormURLWithID($data['id'])) . $nbcomments;
+               //               $ID    = $data['id'];
+               //               if ($finished == 1 && $archived == 0) {
+               //                  $title .= "&nbsp;<a id='archivetask$ID' href='#' title='" . __('Archive this task', 'tasklists') . "'><i class='ti ti-archive'></i></a>";
+               //               }
+               //               if ($finished == 1 && $data['priority'] < 5) {
+               //                  $title .= "&nbsp;<a id='updatepriority$ID' href='#' title='" . __('Update priority of task', 'tasklists') . "'><i class='ti ti-arrow-up'></i></a>";
+               //               }
+
+               $tasks[] = ['id'            => "{$itemtype}-{$data['id']}",
+                           'title'         => $title,
+                           'title_tooltip' => Html::resume_text($rich_content, 100),
+                           'is_deleted'    => $data['is_deleted'] ?? false,
+                           'content'       => $content,
+                           '_team'         => $team,
+                           '_form_link'    => $itemtype::getFormUrlWithID($data['id']),
+
                            'block'          => ($ID > 0 ? $ID : 0),
-                           'link'           => Toolbox::getItemTypeFormURL("PluginTasklistsTask") . "?id=" . $data['id'],
-                           'description'    => Html::resume_text(Html::clean($comment), 80),
-                           'descriptionfull' => $comment,
                            'priority'       => CommonITILObject::getPriorityName($data['priority']),
                            'priority_id'    => $data['priority'],
-                           'bgcolor'        => $_SESSION["glpipriority_" . $data['priority']],
+                           'bgcolor'        => $bgcolor,
                            'percent'        => $data['percent_done'],
                            'actiontime'     => $actiontime,
                            'duedate'        => $duedate,
-                           'user'           => $link,
+                           //                           'user'           => $link,
                            'client'         => $client,
                            'finished'       => $finished,
                            'archived'       => $archived,
                            'finished_style' => $finished_style,
                            'right'          => $right,
                            'users_id'       => $data['users_id'],
-                           '_readonly'      => false
+                           '_readonly'      => false,
+                           '_metadata'      => $meta
                ];
-
-               if ($archived != 1) {
-                  $users_array[] = $data['users_id'];
-               }
             }
          }
-         $state["items"] = $tasks;
-         $nstates[]      = $state;
+         $selected_state["items"] = $tasks;
+         $nstates[$state["id"]]   = $selected_state;
       }
+
       return $nstates;
 
+   }
+
+   public static function getFgColor(string $color = "", int $offset = 40, bool $inherit_if_transparent = false): string {
+      $fg_color = "FFFFFF";
+      if ($color !== "") {
+         $color = str_replace("#", "", $color);
+
+         // if transparency present, get only the color part
+         if (strlen($color) === 8 && preg_match('/^[a-fA-F0-9]+$/', $color)) {
+            $tmp   = $color;
+            $alpha = hexdec(substr($tmp, 6, 2));
+            $color = substr($color, 0, 6);
+
+            if ($alpha <= 100) {
+               return "inherit";
+            }
+         }
+
+         $color_inst = new Mexitek\PHPColors\Color($color);
+
+         // adapt luminance part
+         //         if ($color_inst->isLight()) {
+         //            $hsl = Color::hexToHsl($color);
+         //            $hsl['L'] = max(0, $hsl['L'] - ($offset / 100));
+         //            $fg_color = Color::hslToHex($hsl);
+         //         } else {
+         $hsl      = Mexitek\PHPColors\Color::hexToHsl($color);
+         $hsl['L'] = ($hsl['L'] * 110) + 5;
+         $hsl['L'] = ($hsl['L'] > 110) ? $hsl['L'] / 50 : $hsl['L'] / 90;
+         $fg_color = Mexitek\PHPColors\Color::hslToHex($hsl);
+         //         }
+      }
+
+      return "#" . $fg_color;
    }
 
    /**
@@ -361,5 +475,91 @@ class PluginTasklistsTaskType extends CommonTreeDropdown {
       return $users;
    }
 
+   /**
+    * Have I the global right to "create" the Object
+    * May be overloaded if needed (ex KnowbaseItem)
+    *
+    * @return boolean
+    **/
+   static function canCreate() {
+      if (static::$rightname) {
+         return Session::haveRight(static::$rightname, 1);
+      }
+      return false;
+   }
 
+   static function canUpdate() {
+      if (static::$rightname) {
+         return Session::haveRight(static::$rightname, 1);
+      }
+      return false;
+   }
+
+   static function canDelete() {
+      if (static::$rightname) {
+         return Session::haveRight(static::$rightname, 1);
+      }
+      return false;
+   }
+
+   public static function getDataToDisplayOnKanban($ID, $criteria = []) {
+      // Not needed
+   }
+
+   public static function showKanban($ID) {
+      // Not needed
+   }
+
+   public static function getAllKanbanColumns($column_field = null, $column_ids = [], $get_default = false) {
+
+      if ($column_field === null || $column_field === 'plugin_tasklists_taskstates_id') {
+         $columns  = ['plugin_tasklists_taskstates_id' => []];
+         $restrict = [];
+         //         if (!empty($column_ids) && !$get_default) {
+         //            $restrict = ['id' => $column_ids];
+         //         }
+
+         $Taskstate    = new PluginTasklistsTaskState();
+         $all_statuses = $Taskstate->find($restrict, ['is_finished ASC', 'id']);
+
+         $columns['plugin_tasklists_taskstates_id'][0] = [
+            //            'id'        => 0,
+            'name'            => __('Backlog', 'tasklists'),
+            'header_color'    => "#CCC",
+            'header_fg_color' => Toolbox::getFgColor("#CCC", 50),
+            'drop_only'       => 0
+         ];
+
+         foreach ($all_statuses as $status) {
+
+            $columns['plugin_tasklists_taskstates_id'][$status['id']] = [
+               'name'            => $status['name'],
+               'header_color'    => $status['color'],
+               'header_fg_color' => Toolbox::getFgColor($status['color'], 50),
+               'drop_only'       => 0,//$status['is_finished'] ??
+            ];
+         }
+
+         return $columns['plugin_tasklists_taskstates_id'];
+      } else {
+         return [];
+      }
+   }
+
+   //   public static function getGlobalKanbanUrl(bool $full = true): string
+   //   {
+   //      if (method_exists(static::class, 'getFormUrl')) {
+   //         return static::getFormURL($full) . '?showglobalkanban=1';
+   //      }
+   //      //      $kb = new PluginTasklistsKanban();
+   //      //      echo $kb->getSearchURL() . '?context_id=' . $_REQUEST['items_id'];
+   //      //
+   //      return '';
+   //   }
+
+   public function getKanbanUrlWithID(int $items_id, bool $full = true): string {
+      $kb = new PluginTasklistsKanban();
+      return $kb->getSearchURL() . '?context_id=' . $items_id;
+
+   }
 }

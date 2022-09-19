@@ -115,17 +115,15 @@ class PluginTasklistsTypeVisibility extends CommonDBTM {
 
       $groups    = [];
       $group     = new Group();
-      $op        = "";
-      $condition = "";
+      $condition = [];
       if (count($used_groups) > 0) {
-         $condition .= "`id` NOT IN (" . implode(',', $used_groups) . ")";
-         $op        = "AND";
+         $condition [] = ["NOT" => [
+            "id" => implode(',', $used_groups)
+         ]];
       }
-      $dbu = new DbUtils();
-      //TODO Find
-      $condition .= $dbu->getEntitiesRestrictRequest($op, $group->getTable(), null, null,
-                                                     $group->maybeRecursive());
-      $dataGroup = $group->find($condition, 'name');
+      $condition [] = getEntitiesRestrictCriteria($group->getTable(),'',$_SESSION["glpiactiveentities"],true);
+
+      $dataGroup = $group->find($condition, ['name']);
       if ($dataGroup) {
          foreach ($dataGroup as $field) {
             $groups[$field['id']] = $field['completename'];
@@ -151,8 +149,8 @@ class PluginTasklistsTypeVisibility extends CommonDBTM {
 
          echo "<tr>";
          echo "<td class='tab_bg_2 center' colspan='6'>";
-         echo "<input type='submit' name='add_groups' class='submit' value='" . _sx('button', 'Add') . "' >";
-         echo "<input type='hidden' name='plugin_tasklists_tasktypes_id' class='submit' value='" . $item->fields['id'] . "' >";
+         echo Html::hidden('plugin_tasklists_tasktypes_id', ['value' => $item->fields['id']]);
+         echo Html::submit(_sx('button', 'Add'), ['name' => 'add_groups', 'class' => 'btn btn-primary']);
          echo "</td>";
          echo "</tr>";
          echo "</table></div>";
@@ -247,7 +245,6 @@ class PluginTasklistsTypeVisibility extends CommonDBTM {
       // Get type groups
       $groups_data = $dbu->getAllDataFromTable('glpi_plugin_tasklists_typevisibilities',
                                                ['`plugin_tasklists_tasktypes_id`' => $plugin_tasklists_tasktypes_id]);
-
       if (!empty($groups_data)) {
          $groups_id = [];
          foreach ($groups_data as $groups) {
